@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import DataTable from "react-data-table-component";
+import { useFetchClient } from "@strapi/helper-plugin";
 
-import axios from "axios";
 import {
   Box,
   ContentLayout,
@@ -31,11 +31,13 @@ const HomePage = () => {
   const [totalRows, setTotalRows] = useState(0);
   const [perPage, setPerPage] = useState(10);
 
+  const { get } = useFetchClient();
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await axios.get(
-          `${baseUrl}/excel-export/get/dropdown/values`
+        const response = await get(
+          "/excel-export/get/dropdown/values",
         );
         setDropDownData(response.data);
         setIsLoading(false);
@@ -58,8 +60,8 @@ const HomePage = () => {
 
   const handleDownloadExcel = async () => {
     try {
-      const response = await axios.get(
-        `${baseUrl}/excel-export/download/excel`,
+      const response = await get(
+        "/excel-export/download/excel",
         {
           responseType: "arraybuffer",
           params: {
@@ -125,7 +127,7 @@ const HomePage = () => {
         const offset = (page - 1) * newPerPage; // Calculate the offset based on the current page and items per page
         const limit = newPerPage;
 
-        const response = await axios.get(
+        const response = await get(
           `${baseUrl}/excel-export/get/table/data?uid=${value}&limit=${limit}&offset=${offset}`
         );
         if (response?.data?.columns) {
@@ -194,13 +196,13 @@ const HomePage = () => {
               {selectedValue && (
                 <>
                   <Box padding={4} marginTop={2} className="ml-auto">
-                    <Button
-                      size="L"
-                      variant="default"
-                      onClick={handleDownloadExcel}
-                    >
-                      Download
-                    </Button>
+                  <Button
+                        size="L"
+                        variant="default"
+                        onClick={handleDownloadExcel}
+                      >
+                        Download
+                      </Button>
                     <br />
                     {isSuccessMessage && (
                       <Typography
