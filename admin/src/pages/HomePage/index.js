@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { useParams, useHistory } from 'react-router-dom';
 import DataTable from "react-data-table-component";
-import { useFetchClient } from "@strapi/helper-plugin";
+import { useFetchClient, useQueryParams } from "@strapi/helper-plugin";
 
 import {
   Box,
@@ -12,7 +13,11 @@ import {
   ComboboxOption,
   Stack,
   Typography,
+  Flex,
 } from "@strapi/design-system";
+
+import Filter from "../../components/Filter";
+import pluginId from "../../pluginId";
 
 const HomePage = () => {
   const baseUrl = process.env.STRAPI_ADMIN_BACKEND_URL;
@@ -22,16 +27,20 @@ const HomePage = () => {
   const [columns, setColumns] = useState([]);
   const [tableData, setTableData] = useState([]);
   const [selectedValue, setSelectedValue] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSuccessMessage, setIsSuccessMessage] = useState(false);
   const [fileName, setFileName] = useState("");
 
   //data table pagination
   const [loading, setLoading] = useState(false);
   const [totalRows, setTotalRows] = useState(0);
-  const [perPage, setPerPage] = useState(10);
+
+  const [{query}, setQuery] = useQueryParams();
+  
+  const params = useParams();
+  const history = useHistory();
 
   const { get } = useFetchClient();
+  const [schemaData, setSchemaData] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -40,21 +49,23 @@ const HomePage = () => {
           "/excel-export/get/dropdown/values",
         );
         setDropDownData(response.data);
-        setIsLoading(false);
+        setSelectedValue(params.id || null);
+        if(selectedValue || params.id) {
+          fetchUsers(selectedValue || params.id, parseInt(query.page || 1), parseInt(query.limit || 10));
+        }
       } catch (error) {
         console.error("Error fetching dropdown values:", error);
-        setIsLoading(false);
       }
     };
 
     fetchData();
-  }, []);
+  }, [query, params]);
 
   //data table pagination
   const handleComboboxChange = async (value) => {
     setSelectedValue(value); // Use the callback form to ensure state is updated
-    if (value) {
-      fetchUsers(value, 1, 10);
+    if (value || params.id) {
+      history.push(`/plugins/${pluginId}/${value}?page=1`)
     }
   };
 
@@ -65,7 +76,8 @@ const HomePage = () => {
         {
           responseType: "arraybuffer",
           params: {
-            uid: selectedValue,
+            uid: selectedValue || params.id,
+            filters: query.filters,
           },
         }
       );
@@ -95,6 +107,7 @@ const HomePage = () => {
   };
 
   const handleComboBoxClear = async () => {
+    history.push(`/plugins/${pluginId}`);
     setSelectedValue(null);
     setTableData([]);
   };
@@ -124,18 +137,32 @@ const HomePage = () => {
     const currentSelectedValue = value; // Store the selectedValue in a variable
     if (currentSelectedValue) {
       try {
-        const offset = (page - 1) * newPerPage; // Calculate the offset based on the current page and items per page
-        const limit = newPerPage;
-
-        const response = await get(
-          `${baseUrl}/excel-export/get/table/data?uid=${value}&limit=${limit}&offset=${offset}`
-        );
-        if (response?.data?.columns) {
-          setColumns(response.data.columns);
+        {
+          const response = await get(
+            `/excel-export/get/content-type/schema/${currentSelectedValue}`
+          );
+          setSchemaData(response.data.schema);
         }
-        if (response?.data?.data) {
-          setTableData(response.data.data);
-          setTotalRows(response.data.count);
+        {
+          const offset = (page - 1) * newPerPage; // Calculate the offset based on the current page and items per page
+          
+          const response = await get(
+            `${baseUrl}/excel-export/get/table/data`, {
+              params: {
+                filters: query.filters,
+                uid: value,
+                limit: query.limit,
+                offset: offset,
+              }
+            }
+          );
+          if (response?.data?.columns) {
+            setColumns(response.data.columns);
+          }
+          if (response?.data?.data) {
+            setTableData(response.data.data);
+            setTotalRows(response.data.count);
+          }
         }
       } catch (error) {
         console.error("Error fetching table data:", error);
@@ -145,29 +172,12 @@ const HomePage = () => {
     }
   };
 
-  const handlePageChange = (page) => {
-    fetchUsers(selectedValue, page, perPage);
+  const handlePageChange = (page, totalRows) => {
+    setQuery({ page: page });
   };
 
   const handlePerRowsChange = async (newPerPage, currentPage) => {
-    setLoading(true);
-    try {
-      const offset = (currentPage - 1) * newPerPage; // Calculate the offset based on the current page and items per page
-      const limit = newPerPage;
-
-      const response = await axios.get(
-        `${baseUrl}/excel-export/get/table/data?uid=${selectedValue}&limit=${limit}&offset=${offset}`
-      );
-
-      if (response?.data?.data) {
-        setTableData(response.data.data);
-        setPerPage(newPerPage);
-      }
-    } catch (error) {
-      console.error("Error fetching table data:", error);
-    } finally {
-      setLoading(false);
-    }
+    setQuery({ limit: newPerPage, page: 1 });
   };
 
   return (
@@ -196,13 +206,18 @@ const HomePage = () => {
               {selectedValue && (
                 <>
                   <Box padding={4} marginTop={2} className="ml-auto">
-                  <Button
+                  <Flex
+                      gap={3}
+                    >
+                      <Button
                         size="L"
                         variant="default"
                         onClick={handleDownloadExcel}
                       >
                         Download
                       </Button>
+                      {schemaData[0]? <Filter schema={schemaData} /> : null}
+                    </Flex>
                     <br />
                     {isSuccessMessage && (
                       <Typography
@@ -218,12 +233,14 @@ const HomePage = () => {
                   </Box>
                   <Box className="ml-auto">
                     <DataTable
+                      paginationDefaultPage={parseInt(query.page || 1)}
                       pagination
                       columns={columnRestructure}
                       data={tableData}
                       progressPending={loading}
                       paginationServer
                       paginationTotalRows={totalRows}
+                      paginationPerPage={parseInt(query.limit || 10)}
                       onChangeRowsPerPage={handlePerRowsChange}
                       onChangePage={handlePageChange}
                     />

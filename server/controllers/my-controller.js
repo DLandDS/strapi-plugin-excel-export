@@ -31,14 +31,16 @@ module.exports = ({ strapi }) => ({
     let uid = ctx?.query?.uid;
     let limit = ctx?.query?.limit;
     let offset = ctx?.query?.offset;
+    let filters = ctx?.query?.filters;
     let query = await this.restructureObject(
       excel?.config[uid],
       uid,
       limit,
-      offset
+      offset,
+      filters
     );
 
-    let response = await strapi.db.query(uid).findMany(query);
+    let response = await strapi.entityService.findMany(uid, query);
 
     let header = [
       ...excel?.config[uid]?.columns,
@@ -65,15 +67,17 @@ module.exports = ({ strapi }) => ({
       columns: header,
     };
   },
+  
   async downloadExcel(ctx) {
     try {
       let excel = strapi.config.get("excel");
 
       let uid = ctx?.query?.uid;
+      let filters = ctx?.query?.filters;
 
-      let query = await this.restructureObject(excel?.config[uid], uid);
+      let query = await this.restructureObject(excel?.config[uid], uid, undefined, undefined, filters);
 
-      let response = await strapi.db.query(uid).findMany(query);
+      let response = await strapi.entityService.findMany(uid, query);
 
       let excelData = await this.restructureData(response, excel?.config[uid]);
 
@@ -131,7 +135,7 @@ module.exports = ({ strapi }) => ({
       console.error("Error writing buffer:", error);
     }
   },
-  async restructureObject(inputObject, uid, limit, offset) {
+  async restructureObject(inputObject, uid, limit, offset, filters) {
     let excel = strapi.config.get("excel");
 
     let where = {};
@@ -151,7 +155,8 @@ module.exports = ({ strapi }) => ({
       where,
       orderBy,
       limit: limit,
-      offset: offset,
+      start: offset,
+      filters: filters,
     };
 
     for (const key in inputObject.relation) {
@@ -195,4 +200,29 @@ module.exports = ({ strapi }) => ({
       return restructuredItem;
     });
   },
+  
+  async getContentTypeSchema(ctx) {
+    const { uid } = ctx.params;
+    const schema = strapi.contentType(uid)
+    
+    if(!schema) {
+      return ctx.notFound('contentType.notFound')
+    }
+
+    const filtersSchema = [];
+
+    for (const key in schema.attributes) {
+      const fieldSchema = schema?.attributes[key];
+      if(fieldSchema.type === 'relation') {
+        continue;
+      }
+      filtersSchema.push({
+        name: key,
+        fieldSchema,
+        metadatas: { label: key.charAt(0).toUpperCase() + key.slice(1) },
+      });
+    }
+
+    return { schema: filtersSchema };
+  }
 });
