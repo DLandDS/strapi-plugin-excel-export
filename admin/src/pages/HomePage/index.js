@@ -65,7 +65,7 @@ const HomePage = () => {
   const handleComboboxChange = async (value) => {
     setSelectedValue(value); // Use the callback form to ensure state is updated
     if (value || params.id) {
-      history.push(`/plugins/${pluginId}/${value}?page=1`)
+      history.push(`/plugins/${pluginId}/${value}?page=1&limit=10`)
     }
   };
 
